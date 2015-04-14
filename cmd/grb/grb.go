@@ -1,66 +1,16 @@
 package main
 
 import (
-	"crypto/sha256"
 	"flag"
 	"fmt"
 	"go/build"
-	"io"
 	"log"
 	"os"
-	"path/filepath"
+
+	"github.com/cespare/grb/internal/grb"
 )
 
-type File struct {
-	Name string
-	Hash []byte
-}
-
-type Package struct {
-	Name  string
-	Files []File
-}
-
-func NewPackage(pkg *build.Package) (*Package, error) {
-	var files []File
-	for _, fs := range [][]string{
-		pkg.GoFiles, pkg.CgoFiles, pkg.CFiles, pkg.CXXFiles,
-		pkg.MFiles, pkg.HFiles, pkg.SFiles, pkg.SwigFiles,
-		pkg.SwigCXXFiles, pkg.SysoFiles,
-	} {
-		for _, filename := range fs {
-			path := filepath.Join(pkg.Dir, filename)
-			hash, err := hashFile(path)
-			if err != nil {
-				return nil, err
-			}
-			files = append(files, File{
-				Name: filename,
-				Hash: hash,
-			})
-		}
-	}
-	return &Package{
-		Name:  pkg.ImportPath,
-		Files: files,
-	}, nil
-}
-
-func hashFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, f); err != nil {
-		return nil, err
-	}
-	return hash.Sum(nil)[:], nil
-}
-
-func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*Package, error) {
+func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
 	pkg, err := build.Import(pkgName, "/relative/imports/not/allowed", 0)
 	if err != nil {
 		return nil, err
@@ -69,7 +19,7 @@ func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*Package,
 		// ignore stdlib
 		return nil, nil
 	}
-	var packages []*Package
+	var packages []*grb.Package
 	for _, depPkgName := range pkg.Imports {
 		if _, ok := alreadyFound[depPkgName]; ok {
 			continue
@@ -81,7 +31,7 @@ func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*Package,
 		}
 		packages = append(packages, depPkg...)
 	}
-	p, err := NewPackage(pkg)
+	p, err := grb.NewPackage(pkg)
 	if err != nil {
 		return nil, err
 	}
