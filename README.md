@@ -9,4 +9,11 @@ grb is a remote build server for Go packages.
 * `POST /begin` with a list of package -> (filename, hash)
 * get back build ID and a list of package, filename that the server needs (those that aren't cached)
 * `POST /upload/<hash>` to upload each required file
-* `GET /compile/<build-id>` to compile and get the result
+* `GET /build/<build-id>` to compile and get the result
+
+## TODO
+
+* Better error messages and logging all around
+* Parallelize uploads
+* Cache build artifacts?
+* Optionally log server info about the Go version

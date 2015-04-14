@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cespare/grb/internal/grb"
 )
@@ -21,27 +22,57 @@ const (
 	gopathDir   = "gopath"
 	hashSize    = sha256.Size * 2 // it's hex
 	buildIDSize = 16 * 2          // also hex
+	timeout     = 10 * time.Second
 )
 
 type Server struct {
 	DataDir string
+	Cache   Cache
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	builds map[string]*grb.BuildRequest
 }
 
 func NewServer(dataDir string) (*Server, error) {
-	for _, dir := range []string{dataDir, cacheDir} {
+	for _, dir := range []string{gopathDir, cacheDir} {
 		if err := os.MkdirAll(filepath.Join(dataDir, dir), 0755); err != nil {
 			return nil, err
 		}
 	}
-	return &Server{DataDir: dataDir}, nil
+	return &Server{
+		Cache:   Cache(filepath.Join(dataDir, cacheDir)),
+		DataDir: dataDir,
+		builds:  make(map[string]*grb.BuildRequest),
+	}, nil
 }
 
 func (s *Server) HandleBegin(w http.ResponseWriter, r *http.Request) {
-	id := newBuildID()
+	var breq grb.BuildRequest
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&breq); err != nil {
+		http.Error(w, "malformed BuildRequest: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	id := randomString(buildIDSize / 2)
+	s.mu.Lock()
+	s.builds[id] = &breq
+	s.mu.Unlock()
+	time.AfterFunc(timeout, func() {
+		s.mu.Lock()
+		delete(s.builds, id)
+		s.mu.Unlock()
+	})
+
+	missing, err := s.Cache.FindMissing(breq.Packages)
+	if err != nil {
+		log.Println("/begin error:", err)
+		http.Error(w, "womp womp", 500)
+		return
+	}
 	br := &grb.BuildResponse{
-		ID: id,
+		ID:      id,
+		Missing: missing,
 	}
 	encoder := json.NewEncoder(w)
 	if err := encoder.Encode(br); err != nil {
@@ -51,10 +82,31 @@ func (s *Server) HandleBegin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request, hash []byte) {
+func (s *Server) HandleUpload(w http.ResponseWriter, r *http.Request, hash string) {
+	if len(hash) != hashSize {
+		http.Error(w, "bad hash size", http.StatusBadRequest)
+		return
+	}
+	if err := s.Cache.Put(hash, r.Body); err != nil {
+		// TODO: better error here
+		http.Error(w, "error inserting into file cache: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
-func (s *Server) HandleCompile(w http.ResponseWriter, buildID []byte) {
+func (s *Server) HandleBuild(w http.ResponseWriter, buildID string) {
+	if len(buildID) != buildIDSize {
+		http.Error(w, "bad build id", http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	breq, ok := s.builds[buildID]
+	s.mu.Unlock()
+	if !ok {
+		http.Error(w, "no such build", http.StatusBadRequest)
+		return
+	}
+	s.Build(w, buildID, breq)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -71,15 +123,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
 		}
-		s.HandleUpload(w, r, []byte(rest))
+		s.HandleUpload(w, r, rest)
 		return
 	}
-	if rest, ok := trimPrefix(r.URL.Path, "/compile/"); ok {
+	if rest, ok := trimPrefix(r.URL.Path, "/build/"); ok {
 		if r.Method != "GET" {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
 		}
-		s.HandleCompile(w, []byte(rest))
+		s.HandleBuild(w, rest)
 		return
 	}
 	http.Error(w, "not found", 404)
@@ -92,8 +144,8 @@ func trimPrefix(s, prefix string) (string, bool) {
 	return s2, s != s2
 }
 
-func newBuildID() string {
-	s := make([]byte, buildIDSize/2)
+func randomString(n int) string {
+	s := make([]byte, n)
 	_, err := rand.Read(s)
 	if err != nil {
 		panic(err)

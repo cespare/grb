@@ -10,8 +10,9 @@ import (
 )
 
 type File struct {
-	Name string
-	Hash string
+	Name      string
+	LocalPath string // only used by client
+	Hash      string
 }
 
 type Package struct {
@@ -33,8 +34,9 @@ func NewPackage(pkg *build.Package) (*Package, error) {
 				return nil, err
 			}
 			files = append(files, File{
-				Name: filename,
-				Hash: hash,
+				Name:      filename,
+				LocalPath: path,
+				Hash:      hash,
 			})
 		}
 	}
