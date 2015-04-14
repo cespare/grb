@@ -5,14 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"io"
+	"log"
 	"os"
-
-	"github.com/davecgh/go-spew/spew"
+	"path/filepath"
 )
 
 type File struct {
-	Name   string
-	SHA256 [sha256.Size]byte
+	Name string
+	Hash []byte
 }
 
 type Package struct {
@@ -20,8 +21,43 @@ type Package struct {
 	Files []File
 }
 
-func NewPackage(pkg *build.Package) *Package {
+func NewPackage(pkg *build.Package) (*Package, error) {
+	var files []File
+	for _, fs := range [][]string{
+		pkg.GoFiles, pkg.CgoFiles, pkg.CFiles, pkg.CXXFiles,
+		pkg.MFiles, pkg.HFiles, pkg.SFiles, pkg.SwigFiles,
+		pkg.SwigCXXFiles, pkg.SysoFiles,
+	} {
+		for _, filename := range fs {
+			path := filepath.Join(pkg.Dir, filename)
+			hash, err := hashFile(path)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, File{
+				Name: filename,
+				Hash: hash,
+			})
+		}
+	}
+	return &Package{
+		Name:  pkg.ImportPath,
+		Files: files,
+	}, nil
+}
 
+func hashFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return nil, err
+	}
+	return hash.Sum(nil)[:], nil
 }
 
 func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*Package, error) {
@@ -29,19 +65,27 @@ func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*Package,
 	if err != nil {
 		return nil, err
 	}
+	if pkg.Goroot {
+		// ignore stdlib
+		return nil, nil
+	}
 	var packages []*Package
-	for _, pkgName2 := range pkg.Imports {
-		if _, ok := alreadyFound[pkgName2]; ok {
+	for _, depPkgName := range pkg.Imports {
+		if _, ok := alreadyFound[depPkgName]; ok {
 			continue
 		}
-		alreadyFound[pkgName2] = struct{}{}
-		packages2, err := findPackages(pkgName2, alreadyFound)
+		alreadyFound[depPkgName] = struct{}{}
+		depPkg, err := findPackages(depPkgName, alreadyFound)
 		if err != nil {
 			return nil, err
 		}
-		packages = append(packages, packages2...)
+		packages = append(packages, depPkg...)
 	}
-	packages := append(packages, NewPackage(pkg))
+	p, err := NewPackage(pkg)
+	if err != nil {
+		return nil, err
+	}
+	packages = append(packages, p)
 	return packages, nil
 }
 
@@ -65,5 +109,11 @@ where the flags are:
 	}
 
 	pkgName := flag.Arg(0)
-	fmt.Printf("\033[01;32m>>>> pkg:\n%s<<<<\x1B[m\n", spew.Sdump(pkg))
+	pkgs, err := findPackages(pkgName, make(map[string]struct{}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, pkg := range pkgs {
+		fmt.Printf("\033[01;34m>>>> pkg: %v\x1B[m\n", pkg)
+	}
 }
