@@ -27,21 +27,23 @@ const (
 
 type Server struct {
 	DataDir string
+	GoRoot  string
 	Cache   Cache
 
 	mu     sync.Mutex
 	builds map[string]*grb.BuildRequest
 }
 
-func NewServer(dataDir string) (*Server, error) {
+func NewServer(dataDir, goRoot string) (*Server, error) {
 	for _, dir := range []string{gopathDir, cacheDir} {
 		if err := os.MkdirAll(filepath.Join(dataDir, dir), 0755); err != nil {
 			return nil, err
 		}
 	}
 	return &Server{
-		Cache:   Cache(filepath.Join(dataDir, cacheDir)),
 		DataDir: dataDir,
+		GoRoot:  goRoot,
+		Cache:   Cache(filepath.Join(dataDir, cacheDir)),
 		builds:  make(map[string]*grb.BuildRequest),
 	}, nil
 }
@@ -157,10 +159,11 @@ func main() {
 	var (
 		dataDir = flag.String("datadir", "", "data directory")
 		addr    = flag.String("addr", "localhost:6363", "listen addr")
+		goRoot  = flag.String("goroot", "", "explicitly set Go directory")
 	)
 	flag.Parse()
 
-	server, err := NewServer(*dataDir)
+	server, err := NewServer(*dataDir, *goRoot)
 	if err != nil {
 		log.Fatal(err)
 	}

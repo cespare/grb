@@ -20,7 +20,11 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 		http.Error(w, "error creating build", http.StatusInternalServerError)
 		return
 	}
-	cmd := exec.Command("go", "build", "-o", buildID, breq.PackageName)
+	bin := "go"
+	if s.GoRoot != "" {
+		bin = filepath.Join(s.GoRoot, "bin", "go")
+	}
+	cmd := exec.Command(bin, "build", "-o", buildID, breq.PackageName)
 	cmd.Dir = root
 	gopath, err := filepath.Abs(root)
 	if err != nil {
