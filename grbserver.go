@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cespare/grb/internal/grb"
+	"github.com/cespare/hutil/apachelog"
 )
 
 const (
@@ -170,7 +171,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    *addr,
-		Handler: server,
+		Handler: apachelog.NewDefaultHandler(server),
 	}
 	log.Println("Now listening on", *addr)
 	log.Fatal(srv.ListenAndServe())
