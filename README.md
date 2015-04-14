@@ -13,6 +13,7 @@ grb is a remote build server for Go packages.
 
 ## TODO
 
+* Check that it actually works cross-platform, including platform-specific files, asm, etc
 * Better error messages and logging all around
 * Parallelize uploads
 * Cache build artifacts?
