@@ -30,7 +30,15 @@ grb -o ivy.linux robpike.io/ivy
 
 ## TODO
 
-* Better error messages and logging all around
-* Parallelize uploads
-* Cache build artifacts?
-* Optionally log server info about the Go version
+* Better error messages and logging all around (and actually use -v)
+* HTTPS
+* /statusz route with info about the Go version
+
+## TO(maybe)DO but probably not
+
+* Parallelism (note that none of these steps take as long as just downloading a several MB binary in typical
+  scenarios, so it's not a priority):
+  * SHA-256 hashing of build tree
+  * File uploads
+  * Virtual GOPATH construction (on server side)
+* Cache build artifacts
