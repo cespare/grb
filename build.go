@@ -24,7 +24,12 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 	if s.GoRoot != "" {
 		bin = filepath.Join(s.GoRoot, "bin", "go")
 	}
-	cmd := exec.Command(bin, "build", "-o", buildID, breq.PackageName)
+	args := []string{"build", "-o", buildID}
+	if breq.Race {
+		args = append(args, "-race")
+	}
+	args = append(args, breq.PackageName)
+	cmd := exec.Command(bin, args...)
 	cmd.Dir = root
 	gopath, err := filepath.Abs(root)
 	if err != nil {

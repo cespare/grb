@@ -56,16 +56,24 @@ var (
 	errStatusNot200 = errors.New("non-200 status from build server")
 )
 
-func runBuild(pkgName, serverURL, outputName string) error {
-	pkgs, err := findPackages(pkgName, make(map[string]struct{}))
+type BuildConfig struct {
+	PkgName    string
+	ServerURL  string
+	OutputName string
+	Race       bool
+}
+
+func runBuild(conf *BuildConfig) error {
+	pkgs, err := findPackages(conf.PkgName, make(map[string]struct{}))
 	if err != nil {
 		return err
 	}
 	client := newHTTPClient()
 
 	breq := &grb.BuildRequest{
-		PackageName: pkgName,
+		PackageName: conf.PkgName,
 		Packages:    pkgs,
+		Race:        conf.Race,
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
@@ -76,7 +84,7 @@ func runBuild(pkgName, serverURL, outputName string) error {
 	// Step 1: POST /begin to kick off the build.
 	// The response says which files the server doesn't know about.
 
-	resp, err := client.Post(serverURL+"/begin", "application/json", &buf)
+	resp, err := client.Post(conf.ServerURL+"/begin", "application/json", &buf)
 	if err != nil {
 		return err
 	}
@@ -97,7 +105,7 @@ func runBuild(pkgName, serverURL, outputName string) error {
 	for _, pkg := range bresp.Missing {
 		for _, file := range pkg.Files {
 			log.Printf("Uploading file %s from package %s (%s)", file.Name, pkg.Name, file.LocalPath)
-			if err := uploadFile(&file, serverURL, client); err != nil {
+			if err := uploadFile(&file, conf.ServerURL, client); err != nil {
 				return err
 			}
 		}
@@ -105,7 +113,7 @@ func runBuild(pkgName, serverURL, outputName string) error {
 
 	// Step 3: GET /build to build and download the result.
 
-	resp, err = client.Get(serverURL + "/build/" + bresp.ID)
+	resp, err = client.Get(conf.ServerURL + "/build/" + bresp.ID)
 	if err != nil {
 		return err
 	}
@@ -116,19 +124,19 @@ func runBuild(pkgName, serverURL, outputName string) error {
 	if resp.StatusCode != 200 {
 		return errStatusNot200
 	}
-	f, err := os.Create(outputName)
+	f, err := os.Create(conf.OutputName)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		f.Close()
-		os.Remove(outputName)
+		os.Remove(conf.OutputName)
 		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Chmod(outputName, 0755)
+	return os.Chmod(conf.OutputName, 0755)
 }
 
 func uploadFile(file *grb.File, serverURL string, client *http.Client) error {
@@ -182,9 +190,6 @@ where the flags are:
 		flag.Usage()
 	}
 	_ = *verbose
-	if *race {
-		panic("unimplemented")
-	}
 
 	serverURL := os.Getenv("GRB_SERVER_URL")
 	if serverURL == "" {
@@ -197,7 +202,13 @@ where the flags are:
 	if *out != "" {
 		outputName = *out
 	}
-	if err := runBuild(pkgName, serverURL, outputName); err != nil {
+	conf := &BuildConfig{
+		PkgName:    pkgName,
+		ServerURL:  serverURL,
+		OutputName: outputName,
+		Race:       *race,
+	}
+	if err := runBuild(conf); err != nil {
 		log.Fatal(err)
 	}
 }

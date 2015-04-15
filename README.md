@@ -30,7 +30,6 @@ grb -o ivy.linux robpike.io/ivy
 
 ## TODO
 
-* Plumb -race through
 * Better error messages and logging all around
 * Parallelize uploads
 * Cache build artifacts?
