@@ -20,16 +20,12 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 		http.Error(w, "error creating build", http.StatusInternalServerError)
 		return
 	}
-	bin := "go"
-	if s.GoRoot != "" {
-		bin = filepath.Join(s.GoRoot, "bin", "go")
-	}
 	args := []string{"build", "-o", buildID}
 	if breq.Race {
 		args = append(args, "-race")
 	}
 	args = append(args, breq.PackageName)
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(s.bin(), args...)
 	cmd.Dir = root
 	gopath, err := filepath.Abs(root)
 	if err != nil {
@@ -42,7 +38,6 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 	if err != nil {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		// We use http status 412 to indicate compile errors.
-		//os.Exit(1)
 		w.WriteHeader(412)
 		w.Write(out)
 		return

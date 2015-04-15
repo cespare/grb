@@ -28,10 +28,6 @@ go get robpike.io/ivy # fetch the source and dependencies
 grb -o ivy.linux robpike.io/ivy
 ```
 
-## TODO
-
-* /statusz route with info about the Go version
-
 ## TO(maybe)DO but probably not
 
 * Parallelism (note that none of these steps take as long as just downloading a several MB binary in typical

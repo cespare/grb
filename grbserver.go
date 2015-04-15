@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -137,7 +138,34 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.HandleBuild(w, rest)
 		return
 	}
+	if r.URL.Path == "/version" {
+		if r.Method != "GET" {
+			http.Error(w, "bad method", http.StatusMethodNotAllowed)
+			return
+		}
+		s.HandleVersion(w)
+		return
+	}
 	http.Error(w, "not found", 404)
+}
+
+func (s *Server) HandleVersion(w http.ResponseWriter) {
+	cmd := exec.Command(s.bin(), "version")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Println("Error calling 'go version':", err)
+		os.Stderr.Write(out)
+		http.Error(w, "error getting Go version", http.StatusInternalServerError)
+		return
+	}
+	w.Write(out)
+}
+
+func (s *Server) bin() string {
+	if s.GoRoot == "" {
+		return "go"
+	}
+	return filepath.Join(s.GoRoot, "bin", "go")
 }
 
 // trimPrefix is like strings.TrimPrefix
