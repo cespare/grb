@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/build"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -64,10 +65,12 @@ type BuildConfig struct {
 }
 
 func runBuild(conf *BuildConfig) error {
+	l.Println("Finding dependencies of", conf.PkgName)
 	pkgs, err := findPackages(conf.PkgName, make(map[string]struct{}))
 	if err != nil {
 		return err
 	}
+	l.Printf("Found %d packages for build", len(pkgs))
 	client := newHTTPClient()
 
 	breq := &grb.BuildRequest{
@@ -84,37 +87,48 @@ func runBuild(conf *BuildConfig) error {
 	// Step 1: POST /begin to kick off the build.
 	// The response says which files the server doesn't know about.
 
-	resp, err := client.Post(conf.ServerURL+"/begin", "application/json", &buf)
+	url := conf.ServerURL + "/begin"
+	l.Println("POST", url)
+	resp, err := client.Post(url, "application/json", &buf)
 	if err != nil {
+		l.Println("Error making POST request:", err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		l.Println("Non-200 status code from /begin:", resp.StatusCode)
 		return errStatusNot200
 	}
 
 	var bresp grb.BuildResponse
 	decoder := json.NewDecoder(resp.Body)
 	if err := decoder.Decode(&bresp); err != nil {
+		l.Println("JSON decoding error with result of /begin:", err)
 		return err
 	}
 
 	// Step 2: POST /upload to send all the missing files to the server.
 
-	// TODO: parallelize
+	var nFiles int
+	l.Printf("Starting upload of missing files in %d packages", len(bresp.Missing))
 	for _, pkg := range bresp.Missing {
 		for _, file := range pkg.Files {
-			log.Printf("Uploading file %s from package %s (%s)", file.Name, pkg.Name, file.LocalPath)
+			nFiles++
+			l.Printf("Uploading file %s from package %s (%s)", file.Name, pkg.Name, file.LocalPath)
 			if err := uploadFile(&file, conf.ServerURL, client); err != nil {
 				return err
 			}
 		}
 	}
+	l.Printf("Successfully uploaded %d files from %d packages", nFiles, len(bresp.Missing))
 
 	// Step 3: GET /build to build and download the result.
 
-	resp, err = client.Get(conf.ServerURL + "/build/" + bresp.ID)
+	url = conf.ServerURL + "/build/" + bresp.ID
+	l.Println("GET", url)
+	resp, err = client.Get(url)
 	if err != nil {
+		l.Println("Error making GET request:", err)
 		return err
 	}
 	if resp.StatusCode == 412 {
@@ -122,6 +136,7 @@ func runBuild(conf *BuildConfig) error {
 		io.Copy(os.Stderr, resp.Body)
 	}
 	if resp.StatusCode != 200 {
+		l.Println("Non-200 status code from /begin:", resp.StatusCode)
 		return errStatusNot200
 	}
 	f, err := os.Create(conf.OutputName)
@@ -129,11 +144,13 @@ func runBuild(conf *BuildConfig) error {
 		return err
 	}
 	if _, err := io.Copy(f, resp.Body); err != nil {
+		l.Println("Error downloading file to disk:", err)
 		f.Close()
 		os.Remove(conf.OutputName)
 		return err
 	}
 	if err := f.Close(); err != nil {
+		l.Println("Error writing/closing output file:", err)
 		return err
 	}
 	return os.Chmod(conf.OutputName, 0755)
@@ -172,6 +189,8 @@ func newHTTPClient() *http.Client {
 	}
 }
 
+var l *log.Logger
+
 func main() {
 	var (
 		out     = flag.String("o", "", "specify output file name")
@@ -189,11 +208,15 @@ where the flags are:
 	if flag.NArg() != 1 {
 		flag.Usage()
 	}
-	_ = *verbose
+	var logOutput io.Writer = os.Stderr
+	if !*verbose {
+		logOutput = ioutil.Discard
+	}
+	l = log.New(logOutput, "", log.Lmicroseconds)
 
 	serverURL := os.Getenv("GRB_SERVER_URL")
 	if serverURL == "" {
-		log.Fatal("Must provide environment variable GRB_SERVER_URL")
+		log.Fatal("Must provide environment variable GRB_SERVER_URL.")
 	}
 
 	pkgName := flag.Arg(0)
@@ -209,6 +232,6 @@ where the flags are:
 		Race:       *race,
 	}
 	if err := runBuild(conf); err != nil {
-		log.Fatal(err)
+		log.Fatal("Fatal error:", err)
 	}
 }

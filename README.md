@@ -30,7 +30,6 @@ grb -o ivy.linux robpike.io/ivy
 
 ## TODO
 
-* Better error messages and logging all around (and actually use -v)
 * HTTPS
 * /statusz route with info about the Go version
 
