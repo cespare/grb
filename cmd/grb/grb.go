@@ -143,6 +143,7 @@ func runBuild(conf *BuildConfig) error {
 	if err != nil {
 		return err
 	}
+	l.Println("200 result for GET request; downloading/writing result")
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		l.Println("Error downloading file to disk:", err)
 		f.Close()
@@ -153,7 +154,12 @@ func runBuild(conf *BuildConfig) error {
 		l.Println("Error writing/closing output file:", err)
 		return err
 	}
-	return os.Chmod(conf.OutputName, 0755)
+	if err := os.Chmod(conf.OutputName, 0755); err != nil {
+		l.Println("Chmod error with output artifact:", err)
+		return err
+	}
+	l.Println("Build complete")
+	return nil
 }
 
 func uploadFile(file *grb.File, serverURL string, client *http.Client) error {
