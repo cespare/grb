@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cespare/grb/internal/github.com/cespare/hutil/apachelog"
 	"github.com/cespare/grb/internal/grb"
-	"github.com/cespare/hutil/apachelog"
 )
 
 const (
