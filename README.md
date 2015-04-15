@@ -30,7 +30,6 @@ grb -o ivy.linux robpike.io/ivy
 
 ## TODO
 
-* HTTPS
 * /statusz route with info about the Go version
 
 ## TO(maybe)DO but probably not
