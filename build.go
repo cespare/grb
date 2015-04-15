@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/cespare/grb/internal/grb"
@@ -25,7 +24,7 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 		args = append(args, "-race")
 	}
 	args = append(args, breq.PackageName)
-	cmd := exec.Command(s.bin(), args...)
+	cmd := s.goCmd(args...)
 	cmd.Dir = root
 	gopath, err := filepath.Abs(root)
 	if err != nil {
@@ -33,7 +32,7 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 		http.Error(w, "error creating build", http.StatusInternalServerError)
 		return
 	}
-	cmd.Env = []string{"GOPATH=" + gopath}
+	cmd.Env = append(cmd.Env, "GOPATH="+gopath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/octet-stream")

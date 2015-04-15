@@ -29,14 +29,14 @@ const (
 
 type Server struct {
 	DataDir string
-	GoRoot  string
+	Goroot  string
 	Cache   Cache
 
 	mu     sync.Mutex
 	builds map[string]*grb.BuildRequest
 }
 
-func NewServer(dataDir, goRoot string) (*Server, error) {
+func NewServer(dataDir, goroot string) (*Server, error) {
 	for _, dir := range []string{gopathDir, cacheDir} {
 		if err := os.MkdirAll(filepath.Join(dataDir, dir), 0755); err != nil {
 			return nil, err
@@ -44,7 +44,7 @@ func NewServer(dataDir, goRoot string) (*Server, error) {
 	}
 	return &Server{
 		DataDir: dataDir,
-		GoRoot:  goRoot,
+		Goroot:  goroot,
 		Cache:   Cache(filepath.Join(dataDir, cacheDir)),
 		builds:  make(map[string]*grb.BuildRequest),
 	}, nil
@@ -150,7 +150,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) HandleVersion(w http.ResponseWriter) {
-	cmd := exec.Command(s.bin(), "version")
+	cmd := s.goCmd("version")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Println("Error calling 'go version':", err)
@@ -161,11 +161,16 @@ func (s *Server) HandleVersion(w http.ResponseWriter) {
 	w.Write(out)
 }
 
-func (s *Server) bin() string {
-	if s.GoRoot == "" {
-		return "go"
+func (s *Server) goCmd(args ...string) *exec.Cmd {
+	bin := "go"
+	if s.Goroot != "" {
+		bin = filepath.Join(s.Goroot, "bin", "go")
 	}
-	return filepath.Join(s.GoRoot, "bin", "go")
+	cmd := exec.Command(bin, args...)
+	if s.Goroot != "" {
+		cmd.Env = []string{"GOROOT=" + s.Goroot}
+	}
+	return cmd
 }
 
 // trimPrefix is like strings.TrimPrefix
@@ -188,14 +193,14 @@ func main() {
 	var (
 		dataDir = flag.String("datadir", "", "data directory")
 		addr    = flag.String("addr", "localhost:6363", "listen addr")
-		goRoot  = flag.String("goroot", "", "explicitly set Go directory")
+		goroot  = flag.String("goroot", "", "explicitly set Go directory")
 		tls     = flag.Bool("tls", false, "serve HTTPS traffic (-tlscert and -tlskey must be provided)")
 		tlsCert = flag.String("tlscert", "", "cert.pem for TLS")
 		tlsKey  = flag.String("tlskey", "", "cert.key for TLS")
 	)
 	flag.Parse()
 
-	server, err := NewServer(*dataDir, *goRoot)
+	server, err := NewServer(*dataDir, *goroot)
 	if err != nil {
 		log.Fatal(err)
 	}
