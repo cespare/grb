@@ -191,7 +191,6 @@ func newHTTPClient() *http.Client {
 			TLSHandshakeTimeout: timeout,
 			MaxIdleConnsPerHost: parallelism,
 		},
-		Timeout: 10 * time.Second,
 	}
 }
 

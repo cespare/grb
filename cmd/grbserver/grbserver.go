@@ -24,7 +24,7 @@ const (
 	gopathDir   = "gopath"
 	hashSize    = sha256.Size * 2 // it's hex
 	buildIDSize = 16 * 2          // also hex
-	timeout     = 10 * time.Second
+	timeout     = 5 * time.Minute
 )
 
 type Server struct {
