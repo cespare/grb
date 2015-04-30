@@ -13,10 +13,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cespare/grb/internal/grb"
+	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -24,8 +26,8 @@ const (
 	parallelism = 10
 )
 
-func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
-	pkg, err := build.Import(pkgName, "/relative/imports/not/allowed", 0)
+func findPackages(path string, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
+	pkg, err := build.Import(path, ".", 0)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +35,7 @@ func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*grb.Pack
 		// ignore stdlib
 		return nil, nil
 	}
-	var packages []*grb.Package
+	var pkgs []*grb.Package
 	for _, depPkgName := range pkg.Imports {
 		if _, ok := alreadyFound[depPkgName]; ok {
 			continue
@@ -43,14 +45,14 @@ func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*grb.Pack
 		if err != nil {
 			return nil, err
 		}
-		packages = append(packages, depPkg...)
+		pkgs = append(pkgs, depPkg...)
 	}
 	p, err := grb.NewPackage(pkg)
 	if err != nil {
 		return nil, err
 	}
-	packages = append(packages, p)
-	return packages, nil
+	pkgs = append(pkgs, p)
+	return pkgs, nil
 }
 
 var (
@@ -58,23 +60,25 @@ var (
 )
 
 type BuildConfig struct {
-	PkgName    string
+	PkgPath    string
 	ServerURL  string
 	OutputName string
 	Race       bool
 }
 
 func runBuild(conf *BuildConfig) error {
-	l.Println("Finding dependencies of", conf.PkgName)
-	pkgs, err := findPackages(conf.PkgName, make(map[string]struct{}))
+	l.Println("Finding dependencies of", conf.PkgPath)
+	pkgs, err := findPackages(conf.PkgPath, make(map[string]struct{}))
 	if err != nil {
 		return err
 	}
+	fmt.Printf("\033[01;32m>>>> pkgs:\n%s<<<<\x1B[m\n", spew.Sdump(pkgs))
+	return nil
 	l.Printf("Found %d packages for build", len(pkgs))
 	client := newHTTPClient()
 
 	breq := &grb.BuildRequest{
-		PackageName: conf.PkgName,
+		PackageName: conf.PkgPath,
 		Packages:    pkgs,
 		Race:        conf.Race,
 	}
@@ -210,7 +214,7 @@ where the flags are:
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if flag.NArg() != 1 {
+	if flag.NArg() > 1 {
 		flag.Usage()
 	}
 	var logOutput io.Writer = os.Stderr
@@ -224,14 +228,30 @@ where the flags are:
 		log.Fatal("Must provide environment variable GRB_SERVER_URL.")
 	}
 
-	pkgName := flag.Arg(0)
-	pkgParts := strings.Split(pkgName, "/")
-	outputName := pkgParts[len(pkgParts)-1]
-	if *out != "" {
-		outputName = *out
+	path := "."
+	if flag.NArg() == 1 {
+		path = flag.Arg(0)
 	}
+	var outputName string
+	switch {
+	case *out != "":
+		outputName = *out
+	case strings.HasPrefix(path, "."):
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			log.Fatal("Cannot resolve path %q: %s", path, err)
+		}
+		outputName = filepath.Base(abs)
+	default:
+		parts := strings.Split(path, "/")
+		outputName = parts[len(parts)-1]
+	}
+
+	fmt.Printf("\033[01;34m>>>> path: %v\x1B[m\n", path)
+	fmt.Printf("\033[01;34m>>>> outputName: %v\x1B[m\n", outputName)
+
 	conf := &BuildConfig{
-		PkgName:    pkgName,
+		PkgPath:    path,
 		ServerURL:  serverURL,
 		OutputName: outputName,
 		Race:       *race,

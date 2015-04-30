@@ -18,10 +18,6 @@ var (
 
 type Cache string
 
-//func (c Cache) Contains(hash string) bool {
-//return false
-//}
-
 func (c Cache) Path(hash string) string {
 	return filepath.Join(string(c), hash[:2], hash[2:])
 }
