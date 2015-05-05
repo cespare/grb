@@ -63,7 +63,7 @@ func hashFile(path string) (string, error) {
 type BuildRequest struct {
 	PackageName string
 	Packages    []*Package
-	Race        bool
+	Flags       []string
 }
 
 type BuildResponse struct {

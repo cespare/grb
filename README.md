@@ -15,8 +15,11 @@ Install the client with `go get -u github.com/cespare/grb/cmd/grb`.
 In your environment, export `GRB_SERVER_URL=https://your-server.com`.
 Then you can use `grb` as you would use `go build`, except that the output artifact is built on the server.
 
-Two `go build` options are supported: `-o` (set output name) and `-race` (for building a race detector
-binary).
+Various `go build` options are supported:
+
+* `-o`
+* `-race`
+* `-ldflags`
 
 ## Example
 

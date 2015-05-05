@@ -61,7 +61,7 @@ type BuildConfig struct {
 	PkgName    string
 	ServerURL  string
 	OutputName string
-	Race       bool
+	Flags      []string
 }
 
 func runBuild(conf *BuildConfig) error {
@@ -76,7 +76,7 @@ func runBuild(conf *BuildConfig) error {
 	breq := &grb.BuildRequest{
 		PackageName: conf.PkgName,
 		Packages:    pkgs,
-		Race:        conf.Race,
+		Flags:       conf.Flags,
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
@@ -200,6 +200,7 @@ func main() {
 	var (
 		out     = flag.String("o", "", "specify output file name")
 		race    = flag.Bool("race", false, "build with -race flag")
+		ldflags = flag.String("ldflags", "", "build with -ldflags flag")
 		verbose = flag.Bool("v", false, "show logging messages")
 	)
 	flag.Usage = func() {
@@ -230,11 +231,18 @@ where the flags are:
 	if *out != "" {
 		outputName = *out
 	}
+	var flags []string
+	if *race {
+		flags = append(flags, "-race")
+	}
+	if *ldflags != "" {
+		flags = append(flags, "-ldflags", *ldflags)
+	}
 	conf := &BuildConfig{
 		PkgName:    pkgName,
 		ServerURL:  serverURL,
 		OutputName: outputName,
-		Race:       *race,
+		Flags:      flags,
 	}
 	if err := runBuild(conf); err != nil {
 		log.Fatal("Fatal error:", err)

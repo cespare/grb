@@ -20,9 +20,7 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 		return
 	}
 	args := []string{"build", "-o", buildID}
-	if breq.Race {
-		args = append(args, "-race")
-	}
+	args = append(args, breq.Flags...)
 	args = append(args, breq.PackageName)
 	cmd := s.goCmd(args...)
 	cmd.Dir = root
