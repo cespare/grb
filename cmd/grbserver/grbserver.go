@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -143,6 +145,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad method", http.StatusMethodNotAllowed)
 			return
 		}
+		if r.URL.Query().Get("format") == "json" {
+			s.HandleVersionJSON(w)
+			return
+		}
 		s.HandleVersion(w)
 		return
 	}
@@ -159,6 +165,12 @@ func (s *Server) HandleVersion(w http.ResponseWriter) {
 		return
 	}
 	w.Write(out)
+}
+
+func (s *Server) HandleVersionJSON(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"GOOS":%q,"GOARCH":%q,"Version":%q}`,
+		runtime.GOOS, runtime.GOARCH, runtime.Version())
 }
 
 func (s *Server) goCmd(args ...string) *exec.Cmd {

@@ -23,7 +23,7 @@ type Package struct {
 func NewPackage(pkg *build.Package) (*Package, error) {
 	var files []File
 	for _, fs := range [][]string{
-		pkg.GoFiles, pkg.CgoFiles, pkg.IgnoredGoFiles, pkg.CFiles,
+		pkg.GoFiles, pkg.CgoFiles, pkg.CFiles,
 		pkg.CXXFiles, pkg.MFiles, pkg.HFiles, pkg.SFiles,
 		pkg.SwigFiles, pkg.SwigCXXFiles, pkg.SysoFiles,
 	} {

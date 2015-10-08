@@ -24,8 +24,15 @@ const (
 	parallelism = 10
 )
 
-func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
-	pkg, err := build.Import(pkgName, "/relative/imports/not/allowed", 0)
+func FindPackages(pkgName string, env *Env) ([]*grb.Package, error) {
+	ctx := build.Default
+	ctx.GOOS = env.GOOS
+	ctx.GOARCH = env.GOARCH
+	return findPackages(pkgName, &ctx, make(map[string]struct{}))
+}
+
+func findPackages(pkgName string, ctx *build.Context, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
+	pkg, err := ctx.Import(pkgName, "/relative/imports/not/allowed", 0)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +46,7 @@ func findPackages(pkgName string, alreadyFound map[string]struct{}) ([]*grb.Pack
 			continue
 		}
 		alreadyFound[depPkgName] = struct{}{}
-		depPkg, err := findPackages(depPkgName, alreadyFound)
+		depPkg, err := findPackages(depPkgName, ctx, alreadyFound)
 		if err != nil {
 			return nil, err
 		}
@@ -64,14 +71,42 @@ type BuildConfig struct {
 	Flags      []string
 }
 
+type Env struct {
+	GOOS    string
+	GOARCH  string
+	Version string
+}
+
 func runBuild(conf *BuildConfig) error {
+	// Step 1: Get server environment info so we know what files to send,
+	// then determine all dependencies and their files.
+
+	url := conf.ServerURL + "/version?format=json"
+	client := newHTTPClient()
+	l.Println("GET", url)
+	resp, err := client.Get(url)
+	if err != nil {
+		l.Println("Error making GET request:", err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		l.Println("Non-200 status code from version:", resp.StatusCode)
+		return errStatusNot200
+	}
+	var env Env
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		l.Println("Could not decode /version JSON:", err)
+		return err
+	}
+	l.Printf("Remote server has environment %+v", env)
+
 	l.Println("Finding dependencies of", conf.PkgName)
-	pkgs, err := findPackages(conf.PkgName, make(map[string]struct{}))
+	pkgs, err := FindPackages(conf.PkgName, &env)
 	if err != nil {
 		return err
 	}
 	l.Printf("Found %d packages for build", len(pkgs))
-	client := newHTTPClient()
 
 	breq := &grb.BuildRequest{
 		PackageName: conf.PkgName,
@@ -84,12 +119,12 @@ func runBuild(conf *BuildConfig) error {
 		return err
 	}
 
-	// Step 1: POST /begin to kick off the build.
+	// Step 2: POST /begin to kick off the build.
 	// The response says which files the server doesn't know about.
 
-	url := conf.ServerURL + "/begin"
+	url = conf.ServerURL + "/begin"
 	l.Println("POST", url)
-	resp, err := client.Post(url, "application/json", &buf)
+	resp, err = client.Post(url, "application/json", &buf)
 	if err != nil {
 		l.Println("Error making POST request:", err)
 		return err
@@ -107,7 +142,7 @@ func runBuild(conf *BuildConfig) error {
 		return err
 	}
 
-	// Step 2: POST /upload to send all the missing files to the server.
+	// Step 3: POST /upload to send all the missing files to the server.
 
 	var nFiles int
 	l.Printf("Starting upload of missing files in %d packages", len(bresp.Missing))
@@ -122,7 +157,7 @@ func runBuild(conf *BuildConfig) error {
 	}
 	l.Printf("Successfully uploaded %d files from %d packages", nFiles, len(bresp.Missing))
 
-	// Step 3: GET /build to build and download the result.
+	// Step 4: GET /build to build and download the result.
 
 	url = conf.ServerURL + "/build/" + bresp.ID
 	l.Println("GET", url)
