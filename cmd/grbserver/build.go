@@ -30,7 +30,7 @@ func (s *Server) Build(w http.ResponseWriter, buildID string, breq *grb.BuildReq
 		http.Error(w, "error creating build", http.StatusInternalServerError)
 		return
 	}
-	cmd.Env = append(cmd.Env, "GOPATH="+gopath)
+	cmd.Env = append(os.Environ(), "GOPATH="+gopath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/octet-stream")
