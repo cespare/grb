@@ -32,6 +32,9 @@ func FindPackages(pkgName string, env *Env) ([]*grb.Package, error) {
 }
 
 func findPackages(pkgName string, ctx *build.Context, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
+	if pkgName == "C" {
+		return nil, nil
+	}
 	pkg, err := ctx.Import(pkgName, "/relative/imports/not/allowed", 0)
 	if err != nil {
 		return nil, err
