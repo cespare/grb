@@ -24,8 +24,11 @@ const (
 	parallelism = 10
 )
 
-func FindPackages(pkgName string, env *Env) ([]*grb.Package, error) {
+func FindPackages(pkgName string, env *Env, gopath string) ([]*grb.Package, error) {
 	ctx := build.Default
+	if gopath != "" {
+		ctx.GOPATH = gopath
+	}
 	ctx.GOOS = env.GOOS
 	ctx.GOARCH = env.GOARCH
 	pkg, err := ctx.Import(pkgName, "/relative/imports/not/allowed", build.FindOnly)
@@ -76,6 +79,7 @@ type BuildConfig struct {
 	ServerURL  string
 	OutputName string
 	Flags      []string
+	GOPATH     string
 }
 
 type Env struct {
@@ -90,30 +94,30 @@ func runBuild(conf *BuildConfig) error {
 
 	url := conf.ServerURL + "/version?format=json"
 	client := newHTTPClient()
-	l.Println("GET", url)
+	log.Println("GET", url)
 	resp, err := client.Get(url)
 	if err != nil {
-		l.Println("Error making GET request:", err)
+		log.Println("Error making GET request:", err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		l.Println("Non-200 status code from version:", resp.StatusCode)
+		log.Println("Non-200 status code from version:", resp.StatusCode)
 		return errStatusNot200
 	}
 	var env Env
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		l.Println("Could not decode /version JSON:", err)
+		log.Println("Could not decode /version JSON:", err)
 		return err
 	}
-	l.Printf("Remote server has environment %+v", env)
+	log.Printf("Remote server has environment %+v", env)
 
-	l.Println("Finding dependencies of", conf.PkgName)
-	pkgs, err := FindPackages(conf.PkgName, &env)
+	log.Println("Finding dependencies of", conf.PkgName)
+	pkgs, err := FindPackages(conf.PkgName, &env, conf.GOPATH)
 	if err != nil {
 		return err
 	}
-	l.Printf("Found %d packages for build", len(pkgs))
+	log.Printf("Found %d packages for build", len(pkgs))
 
 	breq := &grb.BuildRequest{
 		PackageName: conf.PkgName,
@@ -130,47 +134,47 @@ func runBuild(conf *BuildConfig) error {
 	// The response says which files the server doesn't know about.
 
 	url = conf.ServerURL + "/begin"
-	l.Println("POST", url)
+	log.Println("POST", url)
 	resp, err = client.Post(url, "application/json", &buf)
 	if err != nil {
-		l.Println("Error making POST request:", err)
+		log.Println("Error making POST request:", err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		l.Println("Non-200 status code from /begin:", resp.StatusCode)
+		log.Println("Non-200 status code from /begin:", resp.StatusCode)
 		return errStatusNot200
 	}
 
 	var bresp grb.BuildResponse
 	decoder := json.NewDecoder(resp.Body)
 	if err := decoder.Decode(&bresp); err != nil {
-		l.Println("JSON decoding error with result of /begin:", err)
+		log.Println("JSON decoding error with result of /begin:", err)
 		return err
 	}
 
 	// Step 3: POST /upload to send all the missing files to the server.
 
 	var nFiles int
-	l.Printf("Starting upload of missing files in %d packages", len(bresp.Missing))
+	log.Printf("Starting upload of missing files in %d packages", len(bresp.Missing))
 	for _, pkg := range bresp.Missing {
 		for _, file := range pkg.Files {
 			nFiles++
-			l.Printf("Uploading file %s from package %s (%s)", file.Name, pkg.Name, file.LocalPath)
+			log.Printf("Uploading file %s from package %s (%s)", file.Name, pkg.Name, file.LocalPath)
 			if err := uploadFile(&file, conf.ServerURL, client); err != nil {
 				return err
 			}
 		}
 	}
-	l.Printf("Successfully uploaded %d files from %d packages", nFiles, len(bresp.Missing))
+	log.Printf("Successfully uploaded %d files from %d packages", nFiles, len(bresp.Missing))
 
 	// Step 4: GET /build to build and download the result.
 
 	url = conf.ServerURL + "/build/" + bresp.ID
-	l.Println("GET", url)
+	log.Println("GET", url)
 	resp, err = client.Get(url)
 	if err != nil {
-		l.Println("Error making GET request:", err)
+		log.Println("Error making GET request:", err)
 		return err
 	}
 	if resp.StatusCode == 412 {
@@ -178,29 +182,29 @@ func runBuild(conf *BuildConfig) error {
 		io.Copy(os.Stderr, resp.Body)
 	}
 	if resp.StatusCode != 200 {
-		l.Println("Non-200 status code from /begin:", resp.StatusCode)
+		log.Println("Non-200 status code from /begin:", resp.StatusCode)
 		return errStatusNot200
 	}
 	f, err := os.Create(conf.OutputName)
 	if err != nil {
 		return err
 	}
-	l.Println("200 result for GET request; downloading/writing result")
+	log.Println("200 result for GET request; downloading/writing result")
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		l.Println("Error downloading file to disk:", err)
+		log.Println("Error downloading file to disk:", err)
 		f.Close()
 		os.Remove(conf.OutputName)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		l.Println("Error writing/closing output file:", err)
+		log.Println("Error writing/closing output file:", err)
 		return err
 	}
 	if err := os.Chmod(conf.OutputName, 0755); err != nil {
-		l.Println("Chmod error with output artifact:", err)
+		log.Println("Chmod error with output artifact:", err)
 		return err
 	}
-	l.Println("Build complete")
+	log.Println("Build complete")
 	return nil
 }
 
@@ -236,15 +240,49 @@ func newHTTPClient() *http.Client {
 	}
 }
 
-var l *log.Logger
+type grbConfig struct {
+	serverURL string
+	verbose   bool
+	out       string
+	race      bool
+	ldflags   string
+	pkg       string
+	gopath    string
+}
+
+func runGRB(c grbConfig) error {
+	if !c.verbose {
+		log.SetOutput(ioutil.Discard)
+		defer log.SetOutput(os.Stderr)
+	}
+	pkgParts := strings.Split(c.pkg, "/")
+	outputName := pkgParts[len(pkgParts)-1]
+	if c.out != "" {
+		outputName = c.out
+	}
+	var flags []string
+	if c.race {
+		flags = append(flags, "-race")
+	}
+	if c.ldflags != "" {
+		flags = append(flags, "-ldflags", c.ldflags)
+	}
+	conf := &BuildConfig{
+		PkgName:    c.pkg,
+		ServerURL:  c.serverURL,
+		OutputName: outputName,
+		Flags:      flags,
+		GOPATH:     c.gopath,
+	}
+	return runBuild(conf)
+}
 
 func main() {
-	var (
-		out     = flag.String("o", "", "specify output file name")
-		race    = flag.Bool("race", false, "build with -race flag")
-		ldflags = flag.String("ldflags", "", "build with -ldflags flag")
-		verbose = flag.Bool("v", false, "show logging messages")
-	)
+	var c grbConfig
+	flag.StringVar(&c.out, "o", "", "specify output file name")
+	flag.BoolVar(&c.race, "race", false, "build with -race flag")
+	flag.StringVar(&c.ldflags, "ldflags", "", "build with -ldflags flag")
+	flag.BoolVar(&c.verbose, "v", false, "show logging messages")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `usage: grb [flags] [package]
 
@@ -256,37 +294,12 @@ where the flags are:
 	if flag.NArg() != 1 {
 		flag.Usage()
 	}
-	var logOutput io.Writer = os.Stderr
-	if !*verbose {
-		logOutput = ioutil.Discard
-	}
-	l = log.New(logOutput, "", log.Lmicroseconds)
-
+	log.SetFlags(log.Lmicroseconds)
 	serverURL := os.Getenv("GRB_SERVER_URL")
 	if serverURL == "" {
 		log.Fatal("Must provide environment variable GRB_SERVER_URL.")
 	}
-
-	pkgName := flag.Arg(0)
-	pkgParts := strings.Split(pkgName, "/")
-	outputName := pkgParts[len(pkgParts)-1]
-	if *out != "" {
-		outputName = *out
-	}
-	var flags []string
-	if *race {
-		flags = append(flags, "-race")
-	}
-	if *ldflags != "" {
-		flags = append(flags, "-ldflags", *ldflags)
-	}
-	conf := &BuildConfig{
-		PkgName:    pkgName,
-		ServerURL:  serverURL,
-		OutputName: outputName,
-		Flags:      flags,
-	}
-	if err := runBuild(conf); err != nil {
+	if err := runGRB(c); err != nil {
 		log.Fatal("Fatal error:", err)
 	}
 }
