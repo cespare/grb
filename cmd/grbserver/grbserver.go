@@ -180,7 +180,7 @@ func (s *Server) goCmd(args ...string) *exec.Cmd {
 	}
 	cmd := exec.Command(bin, args...)
 	if s.Goroot != "" {
-		cmd.Env = []string{"GOROOT=" + s.Goroot}
+		cmd.Env = append(os.Environ(), "GOROOT="+s.Goroot)
 	}
 	return cmd
 }
