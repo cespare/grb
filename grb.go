@@ -28,14 +28,18 @@ func FindPackages(pkgName string, env *Env) ([]*grb.Package, error) {
 	ctx := build.Default
 	ctx.GOOS = env.GOOS
 	ctx.GOARCH = env.GOARCH
-	return findPackages(pkgName, &ctx, make(map[string]struct{}))
+	pkg, err := ctx.Import(pkgName, "/relative/imports/not/allowed", build.FindOnly)
+	if err != nil {
+		return nil, err
+	}
+	return findPackages(pkgName, pkg.Dir, &ctx, make(map[string]struct{}))
 }
 
-func findPackages(pkgName string, ctx *build.Context, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
+func findPackages(pkgName, srcDir string, ctx *build.Context, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
 	if pkgName == "C" {
 		return nil, nil
 	}
-	pkg, err := ctx.Import(pkgName, "/relative/imports/not/allowed", 0)
+	pkg, err := ctx.Import(pkgName, srcDir, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +53,7 @@ func findPackages(pkgName string, ctx *build.Context, alreadyFound map[string]st
 			continue
 		}
 		alreadyFound[depPkgName] = struct{}{}
-		depPkg, err := findPackages(depPkgName, ctx, alreadyFound)
+		depPkg, err := findPackages(depPkgName, pkg.Dir, ctx, alreadyFound)
 		if err != nil {
 			return nil, err
 		}
