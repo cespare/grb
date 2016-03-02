@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cespare/grb/internal/github.com/cespare/hutil"
+	"github.com/cespare/hutil"
 )
 
 const (

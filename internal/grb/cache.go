@@ -1,4 +1,4 @@
-package main
+package grb
 
 import (
 	"crypto/sha256"
@@ -8,19 +8,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-
-	"github.com/cespare/grb/internal/grb"
 )
 
-var (
-	errHashMismatch = errors.New("SHA256 hash of uploaded file doesn't match declared hash")
-)
+var errHashMismatch = errors.New("SHA256 hash of uploaded file doesn't match declared hash")
 
 type Cache string
-
-//func (c Cache) Contains(hash string) bool {
-//return false
-//}
 
 func (c Cache) Path(hash string) string {
 	return filepath.Join(string(c), hash[:2], hash[2:])
@@ -58,10 +50,10 @@ func (c Cache) Put(hash string, r io.Reader) error {
 	return os.Rename(f.Name(), dest)
 }
 
-func (c Cache) FindMissing(packages []*grb.Package) ([]*grb.Package, error) {
-	var missing []*grb.Package
+func (c Cache) FindMissing(packages []*Package) ([]*Package, error) {
+	var missing []*Package
 	for _, pkg := range packages {
-		var files []grb.File
+		var files []File
 		for _, file := range pkg.Files {
 			_, err := os.Stat(c.Path(file.Hash))
 			if err != nil {
@@ -72,7 +64,7 @@ func (c Cache) FindMissing(packages []*grb.Package) ([]*grb.Package, error) {
 			}
 		}
 		if len(files) > 0 {
-			missing = append(missing, &grb.Package{
+			missing = append(missing, &Package{
 				Name:  pkg.Name,
 				Files: files,
 			})
