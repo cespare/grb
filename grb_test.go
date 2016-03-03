@@ -15,6 +15,7 @@ import (
 type testGRB struct {
 	t      *testing.T
 	tmp    string
+	gopath string
 	server *httptest.Server
 }
 
@@ -27,9 +28,14 @@ func newTestGRB(t *testing.T) *testGRB {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gopath, err := filepath.Abs("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
 	return &testGRB{
 		t:      t,
 		tmp:    tmp,
+		gopath: gopath,
 		server: httptest.NewServer(server),
 	}
 }
@@ -39,12 +45,13 @@ func (tg *testGRB) cleanup() {
 	os.RemoveAll(tg.tmp)
 }
 
-func (tg *testGRB) build(pkg, bin string) {
+func (tg *testGRB) build(dir, pkg, bin string) {
 	c := grbConfig{
 		serverURL: tg.server.URL,
 		out:       bin,
 		pkg:       pkg,
-		gopath:    "testdata",
+		gopath:    tg.gopath,
+		dir:       dir,
 	}
 	if err := runGRB(c); err != nil {
 		tg.t.Fatalf("Error running grb: %s", err)
@@ -64,7 +71,7 @@ func TestHello(t *testing.T) {
 	defer tg.cleanup()
 
 	bin := filepath.Join(tg.tmp, "hello")
-	tg.build("hello", bin)
+	tg.build("", "hello", bin)
 	got := tg.run(bin)
 	if want := "a"; got != want {
 		t.Fatalf("got %q; want %q", got, want)
@@ -76,9 +83,30 @@ func TestVendor(t *testing.T) {
 	defer tg.cleanup()
 
 	bin := filepath.Join(tg.tmp, "v")
-	tg.build("v", bin)
+	tg.build("", "v", bin)
 	got := tg.run(bin)
 	if want := "a vendored"; got != want {
 		t.Fatalf("got %q; want %q", got, want)
+	}
+}
+
+func TestRelative(t *testing.T) {
+	tg := newTestGRB(t)
+	defer tg.cleanup()
+
+	for _, tt := range []struct {
+		dir string
+		pkg string
+	}{
+		{"testdata/src", "./hello"},
+		{"testdata/src/hello", "."},
+		{"testdata/src/hello", ""},
+	} {
+		bin := filepath.Join(tg.tmp, "hello")
+		tg.build(tt.dir, tt.pkg, bin)
+		got := tg.run(bin)
+		if want := "a"; got != want {
+			t.Fatalf("got %q; want %q", got, want)
+		}
 	}
 }

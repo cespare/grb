@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ func FindPackages(pkgName string, env *Env, gopath string) ([]*grb.Package, erro
 	}
 	ctx.GOOS = env.GOOS
 	ctx.GOARCH = env.GOARCH
-	pkg, err := ctx.Import(pkgName, "/relative/imports/not/allowed", build.FindOnly)
+	pkg, err := ctx.Import(pkgName, ".", build.FindOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -240,6 +241,38 @@ func newHTTPClient() *http.Client {
 	}
 }
 
+func resolvePackage(dir, pkg, gopath string) (string, error) {
+	if dir != "" {
+		old, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		if err := os.Chdir(dir); err != nil {
+			return "", err
+		}
+		defer os.Chdir(old)
+	}
+	abs, err := filepath.Abs(pkg)
+	if err != nil {
+		return "", err
+	}
+	for _, gopath := range filepath.SplitList(gopath) {
+		base, err := filepath.EvalSymlinks(filepath.Join(gopath, "src"))
+		if err != nil {
+			continue
+		}
+		s, err := filepath.Rel(base, abs)
+		if err != nil {
+			continue
+		}
+		if strings.HasPrefix(s, ".") {
+			continue
+		}
+		return s, nil
+	}
+	return "", fmt.Errorf("cannot resolve package for %s", pkg)
+}
+
 type grbConfig struct {
 	serverURL string
 	verbose   bool
@@ -248,6 +281,7 @@ type grbConfig struct {
 	ldflags   string
 	pkg       string
 	gopath    string
+	dir       string // test hook
 }
 
 func runGRB(c grbConfig) error {
@@ -255,7 +289,22 @@ func runGRB(c grbConfig) error {
 		log.SetOutput(ioutil.Discard)
 		defer log.SetOutput(os.Stderr)
 	}
-	pkgParts := strings.Split(c.pkg, "/")
+	pkgName := c.pkg
+	if pkgName == "" {
+		pkgName = "."
+	}
+	gopath := os.Getenv("GOPATH")
+	if c.gopath != "" {
+		gopath = c.gopath
+	}
+	if strings.HasPrefix(pkgName, "/") || strings.HasPrefix(pkgName, ".") {
+		var err error
+		pkgName, err = resolvePackage(c.dir, pkgName, gopath)
+		if err != nil {
+			return err
+		}
+	}
+	pkgParts := strings.Split(pkgName, "/")
 	outputName := pkgParts[len(pkgParts)-1]
 	if c.out != "" {
 		outputName = c.out
@@ -268,7 +317,7 @@ func runGRB(c grbConfig) error {
 		flags = append(flags, "-ldflags", c.ldflags)
 	}
 	conf := &BuildConfig{
-		PkgName:    c.pkg,
+		PkgName:    pkgName,
 		ServerURL:  c.serverURL,
 		OutputName: outputName,
 		Flags:      flags,
@@ -291,15 +340,20 @@ where the flags are:
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if flag.NArg() != 1 {
+	switch flag.NArg() {
+	case 0:
+	case 1:
+		c.pkg = flag.Arg(0)
+	default:
 		flag.Usage()
 	}
 	log.SetFlags(log.Lmicroseconds)
-	serverURL := os.Getenv("GRB_SERVER_URL")
-	if serverURL == "" {
+	c.serverURL = os.Getenv("GRB_SERVER_URL")
+	if c.serverURL == "" {
 		log.Fatal("Must provide environment variable GRB_SERVER_URL.")
 	}
+
 	if err := runGRB(c); err != nil {
-		log.Fatal("Fatal error:", err)
+		log.Fatalln("Fatal error:", err)
 	}
 }
