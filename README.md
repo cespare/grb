@@ -8,9 +8,12 @@ for deployment scenarios:
 
 ## Installation
 
-Build the server with `go build -o grbserver`. Run `grbserver -h` to see the flags options.
+Go 1.6+ is required.
 
-Install the client with `go get -u github.com/cespare/grb/cmd/grb`.
+Build the server with `go build -o grbserver github.com/cespare/grb/cmd/grbserver`. Run `grbserver -h` to see
+the flags options.
+
+Install the client with `go get -u github.com/cespare/grb`.
 
 In your environment, export `GRB_SERVER_URL=https://your-server.com`.
 Then you can use `grb` as you would use `go build`, except that the output artifact is built on the server.
