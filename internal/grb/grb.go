@@ -24,7 +24,7 @@ func NewPackage(pkg *build.Package) (*Package, error) {
 	var files []File
 	for _, fs := range [][]string{
 		pkg.GoFiles, pkg.CgoFiles, pkg.CFiles,
-		pkg.CXXFiles, pkg.MFiles, pkg.HFiles, pkg.SFiles,
+		pkg.CXXFiles, pkg.MFiles, pkg.HFiles, pkg.FFiles, pkg.SFiles,
 		pkg.SwigFiles, pkg.SwigCXXFiles, pkg.SysoFiles,
 	} {
 		for _, filename := range fs {
