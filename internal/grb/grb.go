@@ -26,6 +26,8 @@ func NewPackage(pkg *build.Package) (*Package, error) {
 		pkg.GoFiles, pkg.CgoFiles, pkg.CFiles,
 		pkg.CXXFiles, pkg.MFiles, pkg.HFiles, pkg.FFiles, pkg.SFiles,
 		pkg.SwigFiles, pkg.SwigCXXFiles, pkg.SysoFiles,
+		// We need to include ignored Go files for race builds.
+		pkg.IgnoredGoFiles,
 	} {
 		for _, filename := range fs {
 			path := filepath.Join(pkg.Dir, filename)
