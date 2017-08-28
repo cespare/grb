@@ -8,7 +8,7 @@ for deployment scenarios:
 
 ## Installation
 
-Go 1.6+ is required.
+Go 1.9+ is required.
 
 Build the server with `go build -o grbserver github.com/cespare/grb/cmd/grbserver`. Run `grbserver -h` to see
 the flags options.
