@@ -46,6 +46,7 @@ func (tg *testGRB) cleanup() {
 }
 
 func (tg *testGRB) build(dir, pkg, bin string) {
+	tg.t.Helper()
 	c := grbConfig{
 		serverURL: tg.server.URL,
 		out:       bin,
@@ -59,6 +60,7 @@ func (tg *testGRB) build(dir, pkg, bin string) {
 }
 
 func (tg *testGRB) run(bin string) string {
+	tg.t.Helper()
 	out, err := exec.Command(bin).Output()
 	if err != nil {
 		tg.t.Fatalf("Error running test program: %s", err)

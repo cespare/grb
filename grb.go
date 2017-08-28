@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,11 +33,39 @@ func FindPackages(pkgName string, env *Env, gopath string) ([]*grb.Package, erro
 	}
 	ctx.GOOS = env.GOOS
 	ctx.GOARCH = env.GOARCH
+	var err error
+	ctx.GOROOT, err = findGOROOT()
+	if err != nil {
+		return nil, err
+	}
 	pkg, err := ctx.Import(pkgName, ".", build.FindOnly)
 	if err != nil {
 		return nil, err
 	}
 	return findPackages(pkgName, pkg.Dir, &ctx, make(map[string]struct{}))
+}
+
+// findGOROOT finds the GOROOT associated with the `go` command in $PATH.
+// It's important to use this GOROOT, rather than the one that grb was compiled
+// with, in case a Go version upgrade changes GOROOT.
+func findGOROOT() (string, error) {
+	cmd := exec.Command("go", "env", "-json")
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		if strings.Contains(errBuf.String(), "flag provided but not defined: -json") {
+			return "", fmt.Errorf("need go version 1.9+")
+		}
+		return "", fmt.Errorf(`"go env -json" gave %s; stderr:\n%s`, err, errBuf.String())
+	}
+	var env struct {
+		GOROOT string
+	}
+	if err := json.Unmarshal(outBuf.Bytes(), &env); err != nil {
+		return "", err
+	}
+	return env.GOROOT, nil
 }
 
 func findPackages(pkgName, srcDir string, ctx *build.Context, alreadyFound map[string]struct{}) ([]*grb.Package, error) {
