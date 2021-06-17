@@ -1,3 +1,14 @@
+# This project is archived
+
+In the years since I created grb, the pure-Go alternatives to the cgo bits of
+the standard library have improved and `-trimpath` has been added. Using
+cross-compiled builds in production is therefore more reasonable, and the need
+for grb has lessened. Additionally, grb was created before modules and hasn't
+been updated to accomodate a non-GOPATH world. Therefore, I have archived this
+project and will not be updating it in the future.
+
+---
+
 # grb (Go Remote Build)
 
 grb is a remote build server for Go packages. It's useful as an alternative to cross-compiling, particularly
